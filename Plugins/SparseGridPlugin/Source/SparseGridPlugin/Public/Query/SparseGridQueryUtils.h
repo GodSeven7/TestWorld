@@ -9,6 +9,17 @@ class AActor;
 class ISparseGridObject;
 
 /**
+ * A circular obstacle used for arc-clipping position solving.
+ */
+struct SPARSEGRIDPLUGIN_API FSparseGridArcObstacle
+{
+	/** Center position of the obstacle (2D, Z ignored) */
+	FVector Position = FVector::ZeroVector;
+	/** Radius of the obstacle */
+	float Radius = 0.0f;
+};
+
+/**
  * Static utility class for SparseGrid queries.
  * Provides a centralized way for plugins to perform spatial queries
  * without direct dependency on WorldGridSubsystem.
@@ -82,6 +93,32 @@ public:
 		float MaxDistance,
 		FSparseGridRaycastHit& OutHit);
 	
+	/**
+	 * Solve the best position for a circular agent around a target using arc-clipping.
+	 *
+	 * Two-phase algorithm:
+	 *   Part A: On the contact circle (R = TargetRadius + AgentRadius), find the best
+	 *           angle by computing blocked arcs from obstacles and picking the closest
+	 *           free angle to the preferred direction.
+	 *   Part B: If Part A finds an angle but the position at R is blocked, fix the angle
+	 *           and increase the radius until a collision-free position is found.
+	 *
+	 * @param TargetPosition   Center of the target (2D, Z preserved for output)
+	 * @param TargetRadius     Radius of the target circle
+	 * @param AgentRadius      Radius of the agent circle
+	 * @param PreferredDirection Preferred approach direction (e.g., from agent to target). Normalized internally.
+	 * @param Obstacles        Array of obstacle circles already placed around the target
+	 * @param OutPosition      Output: the solved position (Z from TargetPosition)
+	 * @return True if a valid position was found
+	 */
+	static bool SolveArcClippingPosition(
+		const FVector& TargetPosition,
+		float TargetRadius,
+		float AgentRadius,
+		const FVector& PreferredDirection,
+		const TArray<FSparseGridArcObstacle>& Obstacles,
+		FVector& OutPosition);
+
 	/**
 	 * Check if world context is available.
 	 */
