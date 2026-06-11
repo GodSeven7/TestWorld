@@ -1,0 +1,17 @@
+{
+    "FileVersion": 3,
+    "Version": 1,
+    "VersionName": "1.0",
+    "FriendlyName": "Core Glue",
+    "Description": "Core infrastructure for the Glue layer pattern: base class, interfaces, and event bus",
+    "Category": "Programming",
+    "CreatedBy": "",
+    "CreatedByURL": "",
+    "Modules": [
+        {
+            "Name": "CoreGlue",
+            "Type": "Runtime",
+            "LoadingPhase": "Default"
+        }
+    ]
+}

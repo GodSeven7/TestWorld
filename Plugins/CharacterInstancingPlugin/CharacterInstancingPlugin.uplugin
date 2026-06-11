@@ -1,0 +1,16 @@
+{
+    "FileVersion": 3,
+    "Version": 1,
+    "VersionName": "1.0.0",
+    "FriendlyName": "Character Instancing Plugin",
+    "Description": "Instanced mesh rendering for GameCharacter, currently using HISM with ISMC upgrade path",
+    "Category": "Gameplay",
+    "CreatedBy": "TestWorld Team",
+    "Modules": [
+        {
+            "Name": "CharacterInstancingPlugin",
+            "Type": "Runtime",
+            "LoadingPhase": "Default"
+        }
+    ]
+}

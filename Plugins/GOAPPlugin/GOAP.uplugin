@@ -1,0 +1,23 @@
+{
+    "FileVersion": 3,
+    "Version": 1,
+    "VersionName": "1.0",
+    "FriendlyName": "GOAP",
+    "Description": "Goal-Oriented Action Planning System",
+    "Category": "AI",
+    "CreatedBy": "",
+    "CreatedByURL": "",
+    "Plugins": [
+        {
+            "Name": "SparseGridPlugin",
+            "Enabled": true
+        }
+    ],
+    "Modules": [
+        {
+            "Name": "GOAP",
+            "Type": "Runtime",
+            "LoadingPhase": "Default"
+        }
+    ]
+}

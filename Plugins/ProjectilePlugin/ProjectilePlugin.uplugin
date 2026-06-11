@@ -1,0 +1,26 @@
+{
+    "FileVersion": 3,
+    "Version": 1,
+    "VersionName": "1.0.0",
+    "FriendlyName": "Projectile Plugin",
+    "Description": "High-performance projectile system using HISM for massive arrow rendering",
+    "Category": "Gameplay",
+    "CreatedBy": "TestWorld Team",
+    "Modules": [
+        {
+            "Name": "ProjectilePlugin",
+            "Type": "Runtime",
+            "LoadingPhase": "Default"
+        }
+    ],
+    "Plugins": [
+        {
+            "Name": "SparseGridPlugin",
+            "Enabled": true
+        },
+        {
+            "Name": "BattleDamagePlugin",
+            "Enabled": true
+        }
+    ]
+}

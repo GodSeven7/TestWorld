@@ -1,0 +1,17 @@
+{
+    "FileVersion": 3,
+    "Version": 1,
+    "VersionName": "1.0",
+    "FriendlyName": "Sparse Grid",
+    "Description": "High-performance sparse grid spatial index for dynamic objects",
+    "Category": "Programming",
+    "CreatedBy": "",
+    "CreatedByURL": "",
+    "Modules": [
+        {
+            "Name": "SparseGridPlugin",
+            "Type": "Runtime",
+            "LoadingPhase": "Default"
+        }
+    ]
+}

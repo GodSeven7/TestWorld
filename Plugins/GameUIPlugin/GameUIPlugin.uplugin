@@ -1,0 +1,17 @@
+{
+    "FileVersion": 3,
+    "Version": 1,
+    "VersionName": "1.0",
+    "FriendlyName": "Game UI",
+    "Description": "Game UI framework with data binding and widget management",
+    "Category": "Programming",
+    "CreatedBy": "",
+    "CreatedByURL": "",
+    "Modules": [
+        {
+            "Name": "GameUIPlugin",
+            "Type": "Runtime",
+            "LoadingPhase": "Default"
+        }
+    ]
+}

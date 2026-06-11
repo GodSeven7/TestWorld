@@ -1,0 +1,17 @@
+{
+    "FileVersion": 3,
+    "Version": 1,
+    "VersionName": "1.0",
+    "FriendlyName": "Battle Damage",
+    "Description": "Battle damage and attribute system for combat objects",
+    "Category": "Programming",
+    "CreatedBy": "",
+    "CreatedByURL": "",
+    "Modules": [
+        {
+            "Name": "BattleDamagePlugin",
+            "Type": "Runtime",
+            "LoadingPhase": "Default"
+        }
+    ]
+}

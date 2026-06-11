@@ -1,0 +1,20 @@
+{
+    "FileVersion": 3,
+    "Version": 1,
+    "VersionName": "1.0",
+    "FriendlyName": "Combat System",
+    "Description": "Combat system with scheduled attack processing",
+    "Category": "Programming",
+    "CreatedBy": "",
+    "CreatedByURL": "",
+    "Modules": [
+        {
+            "Name": "CombatSystemPlugin",
+            "Type": "Runtime",
+            "LoadingPhase": "Default"
+        }
+    ],
+    "Dependencies": [
+        "SparseGridPlugin"
+    ]
+}

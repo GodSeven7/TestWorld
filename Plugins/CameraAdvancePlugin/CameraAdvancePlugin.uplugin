@@ -1,0 +1,16 @@
+{
+    "FileVersion": 3,
+    "Version": 1,
+    "VersionName": "1.0.0",
+    "FriendlyName": "Camera Advance Plugin",
+    "Description": "Camera shake system for hit feedback and impact feel",
+    "Category": "Gameplay",
+    "CreatedBy": "TestWorld Team",
+    "Modules": [
+        {
+            "Name": "CameraAdvancePlugin",
+            "Type": "Runtime",
+            "LoadingPhase": "Default"
+        }
+    ]
+}

@@ -1,0 +1,38 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "",
+	"Category": "",
+	"Description": "",
+	"Modules": [
+		{
+			"Name": "TestWorld",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "ModelingToolsEditorMode",
+			"Enabled": true,
+			"TargetAllowList": [
+				"Editor"
+			]
+		},
+		{
+			"Name": "SparseGridPlugin",
+			"Enabled": true
+		},
+		{
+			"Name": "ObjectPoolPlugin",
+			"Enabled": true
+		},
+		{
+			"Name": "CombatSystemPlugin",
+			"Enabled": true
+		},
+		{
+			"Name": "CoreGlue",
+			"Enabled": true
+		}
+	]
+}
