@@ -2,6 +2,7 @@
 #include "GOAPManager.h"
 #include "GOAPGameTypes.h"
 #include "GOAP.h"
+#include "CrowdSurroundService.h"
 
 UGOAPAgentComponent::UGOAPAgentComponent()
 {
@@ -140,6 +141,41 @@ void UGOAPAgentComponent::UpdateWorldState(FGOAPWorldState& OutWorldState)
 
     bool bAtHome = FVector::Dist2D(Location, QuerySpawnedPosition()) <= AtHomeDist;
     OutWorldState.SetState(EGOAPGameStateKey::AtHomeLocation, bAtHome ? 1 : 0);
+
+    // ─── CrowdSurround 状态更新 ───
+    UGOAPManager* GOAPManager = GetWorld()->GetSubsystem<UGOAPManager>();
+    ICrowdSurroundService* SurroundService = GOAPManager ? GOAPManager->GetCrowdSurroundService() : nullptr;
+
+    if (SurroundService)
+    {
+        bool bHasRequest = GOAPManager->HasSurroundRequest(GetObjectID());
+        OutWorldState.SetState(EGOAPGameStateKey::HasSurroundRequest, bHasRequest ? 1 : 0);
+
+        FCrowdSurroundAssignment Assignment;
+        bool bHasAssignment = SurroundService->GetSurroundAssignment(GetObjectID(), Assignment) && Assignment.bHasAssignment;
+        OutWorldState.SetState(EGOAPGameStateKey::HasSurroundAssignment, bHasAssignment ? 1 : 0);
+
+        bool bAtSurroundPos = false;
+        if (bHasAssignment)
+        {
+            if (Assignment.bIsInPosition)
+            {
+                bAtSurroundPos = true;
+            }
+            else
+            {
+                float ArrivalDist = Config ? Config->ArrivalDistance : 50.0f;
+                bAtSurroundPos = FVector::Dist2D(Location, Assignment.DesiredPosition) <= ArrivalDist;
+            }
+        }
+        OutWorldState.SetState(EGOAPGameStateKey::AtSurroundPosition, bAtSurroundPos ? 1 : 0);
+    }
+    else
+    {
+        OutWorldState.SetState(EGOAPGameStateKey::HasSurroundRequest, 0);
+        OutWorldState.SetState(EGOAPGameStateKey::HasSurroundAssignment, 0);
+        OutWorldState.SetState(EGOAPGameStateKey::AtSurroundPosition, 0);
+    }
 }
 
 TArray<UActorUnifiedDataComponent*> UGOAPAgentComponent::QueryNearbyUnifiedData(float Radius, int32 ExcludeFactionID) const

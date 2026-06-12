@@ -3,6 +3,7 @@
 #include "SparseGridComponent.h"
 #include "SparseGridManager.h"
 #include "SparseGridConfig.h"
+#include "SparseGridQueryUtils.h"
 
 namespace
 {
@@ -83,13 +84,6 @@ namespace
         OutA.Z = FirstCenter.Z;
         OutB.Z = FirstCenter.Z;
         return true;
-    }
-
-    float GetAngularCostFromDirection(const FCrowdSurroundGroup& Group, const FVector& Position, const FVector& PreferredDirection)
-    {
-        const FVector CandidateDirection = GetDirectionFromTarget(Group, Position);
-        const float Dot = FMath::Clamp(FVector::DotProduct(CandidateDirection, PreferredDirection), -1.0f, 1.0f);
-        return FMath::Acos(Dot);
     }
 
     float GetReservationTimeout(const USparseGridConfig* Config)
@@ -460,79 +454,44 @@ bool UCrowdSurroundManager::TryGetMoveToAttackPosition(const FCrowdSurroundGroup
         return false;
     }
 
-    TArray<FCrowdSurroundOccupiedPoint> OccupiedPoints;
-    CollectOccupiedPoints(Group, OccupiedPoints);
-
-    const FVector PreferredDirection = GetDirectionFromTarget(Group, Candidate.Position);
-    const FVector DirectContactPosition = Group.AnchorPosition + PreferredDirection * ContactRadius;
-
-    if (IsAttackPositionAvailable(Candidate, DirectContactPosition, OccupiedPoints))
+    TArray<FSparseGridArcObstacle> Obstacles;
+    Obstacles.Reserve(LockedSlots.Num());
+    for (const auto& LockedSlotPair : LockedSlots)
     {
-        OutMovePosition = DirectContactPosition;
-        return true;
-    }
-
-    TArray<FCrowdPointCandidate> TangentCandidates;
-    TangentCandidates.Reserve(OccupiedPoints.Num() * 2);
-
-    for (const FCrowdSurroundOccupiedPoint& OccupiedPoint : OccupiedPoints)
-    {
-        FVector FirstIntersection;
-        FVector SecondIntersection;
-        const float TangentDistance = GetSeparationDistance(Candidate, OccupiedPoint);
-        if (!FindCircleIntersections2D(Group.AnchorPosition, ContactRadius, OccupiedPoint.Position, TangentDistance, FirstIntersection, SecondIntersection))
+        const int32 LockedObjectID = LockedSlotPair.Key;
+        if (LockedObjectID == Candidate.ObjectID)
         {
             continue;
         }
 
-        const FVector Intersections[] = { FirstIntersection, SecondIntersection };
-        for (const FVector& Intersection : Intersections)
+        const FCrowdSurroundAgentIntent* LockedIntent = AgentIntents.Find(LockedObjectID);
+        if (!LockedIntent || LockedIntent->TargetObjectID != Group.TargetObjectID)
         {
-            FCrowdPointCandidate PointCandidate;
-            PointCandidate.Position = Intersection;
-            PointCandidate.Cost = FVector::Dist2D(Candidate.Position, Intersection)
-                + GetAngularCostFromDirection(Group, Intersection, PreferredDirection) * ContactRadius * 0.75f;
-            TangentCandidates.Add(PointCandidate);
+            continue;
         }
+
+        const FLockedSurroundSlot& LockedSlot = LockedSlotPair.Value;
+
+        FSparseGridArcObstacle Obstacle;
+        Obstacle.Position = CrowdSurroundUtilities::FlattenPosition(LockedSlot.LockedPosition);
+        Obstacle.Radius = FMath::Max(1.0f, LockedSlot.CollisionRadius);
+        Obstacles.Add(Obstacle);
     }
 
-    const float AngleStep = FMath::DegreesToRadians(5.0f);
-    const float PreferredAngle = FMath::Atan2(PreferredDirection.Y, PreferredDirection.X);
-    const int32 MaxStep = FMath::CeilToInt(PI / AngleStep);
-    for (int32 Step = 1; Step <= MaxStep; ++Step)
+    const FVector PreferredDirection = GetDirectionFromTarget(Group, Candidate.Position);
+    if (!FSparseGridQueryUtils::SolveArcClippingPosition(
+        Group.AnchorPosition,
+        Group.TargetRadius,
+        GetCandidatePhysicalRadius(Candidate),
+        PreferredDirection,
+        Obstacles,
+        OutMovePosition))
     {
-        const float SignedAngles[] = {
-            PreferredAngle + AngleStep * static_cast<float>(Step),
-            PreferredAngle - AngleStep * static_cast<float>(Step)
-        };
-
-        for (float Angle : SignedAngles)
-        {
-            const FVector Direction(FMath::Cos(Angle), FMath::Sin(Angle), 0.0f);
-            const FVector Position = Group.AnchorPosition + Direction.GetSafeNormal2D() * ContactRadius;
-            FCrowdPointCandidate PointCandidate;
-            PointCandidate.Position = Position;
-            PointCandidate.Cost = FVector::Dist2D(Candidate.Position, Position)
-                + static_cast<float>(Step) * Candidate.Spacing * 0.25f;
-            TangentCandidates.Add(PointCandidate);
-        }
+        return false;
     }
 
-    TangentCandidates.Sort([](const FCrowdPointCandidate& A, const FCrowdPointCandidate& B)
-    {
-        return A.Cost < B.Cost;
-    });
-
-    for (const FCrowdPointCandidate& PointCandidate : TangentCandidates)
-    {
-        if (IsAttackPositionAvailable(Candidate, PointCandidate.Position, OccupiedPoints))
-        {
-            OutMovePosition = PointCandidate.Position;
-            return true;
-        }
-    }
-
-    return false;
+    OutMovePosition.Z = Group.AnchorPosition.Z;
+    return HasLineOfMovement(OutMovePosition);
 }
 
 // ---------------------------------------------------------------------------
@@ -784,7 +743,7 @@ void UCrowdSurroundManager::WriteWaitAssignment(
 }
 
 // ---------------------------------------------------------------------------
-// AssignSurroundIntents: 3-phase assignment (preserve → attack → wait)
+// AssignSurroundIntents: 2-phase assignment (preserve locked slots -> attack)
 // ---------------------------------------------------------------------------
 void UCrowdSurroundManager::AssignSurroundIntents(FCrowdSurroundGroup& Group, const TMap<int32, FCrowdSurroundCandidate>& Candidates)
 {
@@ -813,35 +772,28 @@ void UCrowdSurroundManager::AssignSurroundIntents(FCrowdSurroundGroup& Group, co
 
     TSet<int32> AssignedAgents;
 
-    // --- Phase 1: Preserve Occupied anchors ---
-    // An occupied anchor is preserved if its owner is still locked and still a candidate
-    for (const FCrowdAttackAnchor& PreviousAnchor : PreviousAttackAnchors)
+    // --- Phase 1: Preserve locked attack positions ---
+    for (const auto& LockedSlotPair : LockedSlots)
     {
-        if (PreviousAnchor.State != ECrowdAttackAnchorState::Occupied)
-        {
-            continue;
-        }
-
-        const int32 OwnerObjectID = PreviousAnchor.OwnerObjectID;
+        const int32 OwnerObjectID = LockedSlotPair.Key;
         if (OwnerObjectID == INDEX_NONE)
         {
             continue;
         }
 
-        // Check if the owner is still in LockedSlots (lock still active)
-        if (!LockedSlots.Contains(OwnerObjectID))
-        {
-            continue;
-        }
-
-        // Check if the owner is still a candidate (still wants to surround this target)
         const FCrowdSurroundCandidate* Candidate = Candidates.Find(OwnerObjectID);
         if (!Candidate)
         {
             continue;
         }
 
-        FVector PreservedAttackPosition = PreviousAnchor.Position;
+        const FCrowdSurroundAgentIntent* Intent = AgentIntents.Find(OwnerObjectID);
+        if (!Intent || Intent->TargetObjectID != Group.TargetObjectID)
+        {
+            continue;
+        }
+
+        FVector PreservedAttackPosition = LockedSlotPair.Value.LockedPosition;
         PreservedAttackPosition.Z = Group.AnchorPosition.Z;
 
         WriteAttackAssignment(Group, OwnerObjectID, *Candidate, PreservedAttackPosition, ECrowdAttackAnchorState::Occupied, Now);
@@ -940,8 +892,7 @@ void UCrowdSurroundManager::AssignSurroundIntents(FCrowdSurroundGroup& Group, co
         continue;
     }
 
-    // --- Phase 3: Assign wait positions ---
-    int32 NextWaitIndex = 0;
+    // Wait points are disabled for now; agents that cannot get an attack slot have no assignment.
     for (const FCrowdSurroundCandidate& Candidate : OrderedCandidates)
     {
         if (AssignedAgents.Contains(Candidate.ObjectID))
@@ -955,23 +906,7 @@ void UCrowdSurroundManager::AssignSurroundIntents(FCrowdSurroundGroup& Group, co
             continue;
         }
 
-        FVector WaitPosition;
-        if (!TryGetMoveToWaitPosition(Group, Candidate, WaitPosition))
-        {
-            // No wait position available — clear assignment
-            Assignments.Remove(Candidate.ObjectID);
-            continue;
-        }
-
-        const int32 ParentAnchorID = FindNearestAttackAnchorID(Group, WaitPosition);
-        if (ParentAnchorID == INDEX_NONE)
-        {
-            Assignments.Remove(Candidate.ObjectID);
-            continue;
-        }
-
-        WriteWaitAssignment(Group, Candidate.ObjectID, Candidate, WaitPosition, ParentAnchorID, NextWaitIndex++);
-        AssignedAgents.Add(Candidate.ObjectID);
+        Assignments.Remove(Candidate.ObjectID);
     }
 
     Group.AnchorCount = Group.AttackAnchors.Num();

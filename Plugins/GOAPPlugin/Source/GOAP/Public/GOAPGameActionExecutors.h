@@ -39,11 +39,18 @@ struct GOAP_API FChaseActionExecutor : public FGOAPActionExecutor
 {
     GENERATED_BODY()
 
+    FChaseActionExecutor()
+        : RequestLock(MakeShared<FCriticalSection>())
+    {}
+
+    TSharedPtr<FCriticalSection> RequestLock;
+
     virtual bool CheckPreconditions(IGOAPAgentInterface* Agent, const FGOAPWorldState& CurrentWorldState) const override;
     virtual bool ShouldAbort(IGOAPAgentInterface* Agent, const FGOAPWorldState& CurrentWorldState) const override;
     virtual bool CheckCompletion(IGOAPAgentInterface* Agent, const FGOAPWorldState& CurrentWorldState) const override;
     virtual void ExecuteInternal(IGOAPAgentInterface* Agent, FGOAPAgentContext& Context, float DeltaTime, const FGOAPWorldState& CurrentWorldState) override;
     virtual void Apply(IGOAPAgentInterface* Agent, const FGOAPAgentContext& Context, float DeltaTime, const FGOAPWorldState& CurrentWorldState) override;
+    virtual void OnEnter(IGOAPAgentInterface* Agent) override;
 };
 
 USTRUCT()
@@ -84,4 +91,28 @@ struct GOAP_API FReturnActionExecutor : public FGOAPActionExecutor
     virtual void ExecuteInternal(IGOAPAgentInterface* Agent, FGOAPAgentContext& Context, float DeltaTime, const FGOAPWorldState& CurrentWorldState) override;
     virtual void Apply(IGOAPAgentInterface* Agent, const FGOAPAgentContext& Context, float DeltaTime, const FGOAPWorldState& CurrentWorldState) override;
     virtual void OnExit(IGOAPAgentInterface* Agent, EGOAPActionExitReason Reason) override;
+};
+
+USTRUCT()
+struct GOAP_API FMoveToSurroundPositionExecutor : public FGOAPActionExecutor
+{
+    GENERATED_BODY()
+
+    virtual bool CheckPreconditions(IGOAPAgentInterface* Agent, const FGOAPWorldState& CurrentWorldState) const override;
+    virtual bool ShouldAbort(IGOAPAgentInterface* Agent, const FGOAPWorldState& CurrentWorldState) const override;
+    virtual bool CheckCompletion(IGOAPAgentInterface* Agent, const FGOAPWorldState& CurrentWorldState) const override;
+    virtual void ExecuteInternal(IGOAPAgentInterface* Agent, FGOAPAgentContext& Context, float DeltaTime, const FGOAPWorldState& CurrentWorldState) override;
+    virtual void Apply(IGOAPAgentInterface* Agent, const FGOAPAgentContext& Context, float DeltaTime, const FGOAPWorldState& CurrentWorldState) override;
+};
+
+USTRUCT()
+struct GOAP_API FWaitForAttackOpportunityExecutor : public FGOAPActionExecutor
+{
+    GENERATED_BODY()
+
+    virtual bool CheckPreconditions(IGOAPAgentInterface* Agent, const FGOAPWorldState& CurrentWorldState) const override;
+    virtual bool ShouldAbort(IGOAPAgentInterface* Agent, const FGOAPWorldState& CurrentWorldState) const override;
+    virtual bool CheckCompletion(IGOAPAgentInterface* Agent, const FGOAPWorldState& CurrentWorldState) const override;
+    virtual void ExecuteInternal(IGOAPAgentInterface* Agent, FGOAPAgentContext& Context, float DeltaTime, const FGOAPWorldState& CurrentWorldState) override;
+    virtual void Apply(IGOAPAgentInterface* Agent, const FGOAPAgentContext& Context, float DeltaTime, const FGOAPWorldState& CurrentWorldState) override;
 };

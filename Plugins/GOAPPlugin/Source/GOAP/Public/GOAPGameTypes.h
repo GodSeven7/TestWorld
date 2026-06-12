@@ -12,6 +12,8 @@ namespace EGOAPGameAction
         Chase = 502,
         Attack = 503,
         ReturnToPatrol = 504,
+        MoveToSurroundPosition = 505,
+        WaitForAttackOpportunity = 506,
     };
 }
 
@@ -26,5 +28,8 @@ namespace EGOAPGameStateKey
         AtHomeLocation = 4,
         EnemyDead = 5,
         IsPatrolling = 6,
+        HasSurroundRequest = 7,
+        HasSurroundAssignment = 8,
+        AtSurroundPosition = 9,
     };
 }

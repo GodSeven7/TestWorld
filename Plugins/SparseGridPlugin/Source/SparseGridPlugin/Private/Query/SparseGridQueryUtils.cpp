@@ -187,12 +187,25 @@ namespace ArcClipSolver
 		float End = 0.0f;
 	};
 
+	/** Pre-computed obstacle data relative to target center C */
+	struct FObsCache
+	{
+		FVector2f Pos;   // Position in 2D (pre-converted from FVector)
+		float Dist;      // Distance from C
+		float Angle;     // Atan2 angle from C
+		float SumR;      // AgentR + Obstacle.Radius
+	};
+
+	using FArcArray = TArray<FArcInterval, TInlineAllocator<16>>;
+	using FObsCacheArray = TArray<FObsCache, TInlineAllocator<16>>;
+
 	static float NormalizeAngle(float Angle)
 	{
 		constexpr float TwoPi = 2.0f * PI;
-		float Result = FMath::Fmod(Angle, TwoPi);
-		if (Result < 0.0f) Result += TwoPi;
-		return Result;
+		// Inputs from Atan2 ± Acos are in [-2pi, 2pi], one add/sub suffices
+		if (Angle < 0.0f) Angle += TwoPi;
+		else if (Angle >= TwoPi) Angle -= TwoPi;
+		return Angle;
 	}
 
 	static float AngularDistance(float A, float B)
@@ -202,9 +215,9 @@ namespace ArcClipSolver
 		return Diff;
 	}
 
-	static TArray<FArcInterval> MergeArcs(TArray<FArcInterval>&& InArcs)
+	static FArcArray MergeArcs(FArcArray&& InArcs)
 	{
-		TArray<FArcInterval> Unwrapped;
+		FArcArray Unwrapped;
 		Unwrapped.Reserve(InArcs.Num() * 2);
 		constexpr float TwoPi = 2.0f * PI;
 		for (FArcInterval& Arc : InArcs)
@@ -213,7 +226,7 @@ namespace ArcClipSolver
 			else { Unwrapped.Add({Arc.Start, TwoPi}); Unwrapped.Add({0.0f, Arc.End}); }
 		}
 		Unwrapped.Sort([](const FArcInterval& A, const FArcInterval& B) { return A.Start < B.Start; });
-		TArray<FArcInterval> Merged;
+		FArcArray Merged;
 		for (const FArcInterval& Arc : Unwrapped)
 		{
 			if (Merged.Num() == 0 || Arc.Start > Merged.Last().End + KINDA_SMALL_NUMBER) Merged.Add(Arc);
@@ -222,10 +235,10 @@ namespace ArcClipSolver
 		return Merged;
 	}
 
-	static TArray<FArcInterval> ComplementArcs(const TArray<FArcInterval>& Merged)
+	static FArcArray ComplementArcs(const FArcArray& Merged)
 	{
 		constexpr float TwoPi = 2.0f * PI;
-		TArray<FArcInterval> Free;
+		FArcArray Free;
 		if (Merged.Num() == 0) { Free.Add({0.0f, TwoPi}); return Free; }
 		if (Merged[0].Start > KINDA_SMALL_NUMBER) Free.Add({0.0f, Merged[0].Start});
 		for (int32 i = 1; i < Merged.Num(); ++i)
@@ -237,9 +250,10 @@ namespace ArcClipSolver
 		return Free;
 	}
 
-	static bool FindBestAngleInFreeArcs(const TArray<FArcInterval>& FreeArcs, float PreferredAngle, float& OutAngle)
+	static bool FindBestAngleInFreeArcs(const FArcArray& FreeArcs, float PreferredAngle, float& OutAngle)
 	{
 		PreferredAngle = NormalizeAngle(PreferredAngle);
+		float BestAngle = PreferredAngle, BestDist = MAX_FLT;
 		for (const FArcInterval& Arc : FreeArcs)
 		{
 			if (PreferredAngle >= Arc.Start - KINDA_SMALL_NUMBER && PreferredAngle <= Arc.End + KINDA_SMALL_NUMBER)
@@ -247,10 +261,6 @@ namespace ArcClipSolver
 				OutAngle = FMath::Clamp(PreferredAngle, Arc.Start, Arc.End);
 				return true;
 			}
-		}
-		float BestAngle = PreferredAngle, BestDist = MAX_FLT;
-		for (const FArcInterval& Arc : FreeArcs)
-		{
 			float D1 = AngularDistance(PreferredAngle, Arc.Start);
 			float D2 = AngularDistance(PreferredAngle, Arc.End);
 			if (D1 < BestDist) { BestDist = D1; BestAngle = Arc.Start; }
@@ -260,18 +270,30 @@ namespace ArcClipSolver
 		return false;
 	}
 
-	static bool SolvePartA(const FVector2D& C, float R, float AgentR, const TArray<FSparseGridArcObstacle>& Obs, float PrefAngle, float& OutAngle)
+	static FObsCacheArray BuildCache(const FVector2f& C, float AgentR, const TArray<FSparseGridArcObstacle>& Obs)
 	{
-		TArray<FArcInterval> Blocked;
-		for (const auto& O : Obs)
+		FObsCacheArray Cache;
+		Cache.Reserve(Obs.Num());
+		for (const FSparseGridArcObstacle& O : Obs)
 		{
-			FVector2D P(O.Position.X, O.Position.Y);
-			float d = (P - C).Size(), s = AgentR + O.Radius;
+			FVector2f Pos(O.Position.X, O.Position.Y);
+			FVector2f ToObs = Pos - C;
+			Cache.Add({Pos, ToObs.Size(), FMath::Atan2(ToObs.Y, ToObs.X), AgentR + O.Radius});
+		}
+		return Cache;
+	}
+
+	static bool SolvePartA(float R, const FObsCacheArray& Cache, float PrefAngle, float& OutAngle)
+	{
+		FArcArray Blocked;
+		for (const FObsCache& O : Cache)
+		{
+			float d = O.Dist, s = O.SumR;
 			if (d > R + s + KINDA_SMALL_NUMBER) continue;
 			if (d < KINDA_SMALL_NUMBER || s >= d + R - KINDA_SMALL_NUMBER) { Blocked.Add({0.0f, 2.0f*PI}); break; }
 			float k = (R*R + d*d - s*s) / (2*R*d);
 			float ha = FMath::Acos(FMath::Clamp(k, -1.f, 1.f));
-			float a = FMath::Atan2(P.Y-C.Y, P.X-C.X);
+			float a = O.Angle;
 			Blocked.Add({NormalizeAngle(a-ha), NormalizeAngle(a+ha)});
 		}
 		auto Merged = MergeArcs(MoveTemp(Blocked));
@@ -280,22 +302,21 @@ namespace ArcClipSolver
 		return FindBestAngleInFreeArcs(Free, PrefAngle, OutAngle);
 	}
 
-	static bool SolvePartB(const FVector2D& C, float BaseR, float AgentR, const TArray<FSparseGridArcObstacle>& Obs, float Angle, float MaxR, float& OutR)
+	static bool SolvePartB(float BaseR, const FObsCacheArray& Cache, float Angle, float MaxR, float& OutR)
 	{
 		float Rmin = BaseR;
-		for (const auto& O : Obs)
+		for (const FObsCache& O : Cache)
 		{
-			FVector2D D(O.Position.X-C.X, O.Position.Y-C.Y);
-			float d = D.Size();
+			float d = O.Dist;
 			if (d < KINDA_SMALL_NUMBER) continue;
-			float s = AgentR + O.Radius;
-			float da = Angle - FMath::Atan2(D.Y, D.X);
+			float s = O.SumR;
+			float da = Angle - O.Angle;
 			float cp = d*FMath::Cos(da), sp = d*FMath::Sin(da);
 			float disc = s*s - sp*sp;
 			if (disc < 0.f) continue;
 			Rmin = FMath::Max(Rmin, cp + FMath::Sqrt(disc));
+			if (Rmin > MaxR) return false;
 		}
-		if (Rmin > MaxR) return false;
 		OutR = Rmin;
 		return true;
 	}
@@ -306,39 +327,26 @@ namespace ArcClipSolver
 	 * is tangent to two adjacent obstacles simultaneously, fitting into the "valley"
 	 * between them. This naturally produces honeycomb packing for subsequent layers.
 	 */
-	static bool SolvePartC(const FVector2D& C, float AgentR, const TArray<FSparseGridArcObstacle>& Obs, float PrefAngle, float MaxR, float& OutAngle, float& OutR)
+	static bool SolvePartC(const FVector2f& C, float AgentR, FObsCacheArray& Cache, float PrefAngle, float MaxR, float& OutAngle, float& OutR)
 	{
-		if (Obs.Num() < 2) return false;
+		if (Cache.Num() < 2) return false;
 
-		// Sort obstacles by angle around C
-		struct FIndexedAngle { int32 Index; float Angle; };
-		TArray<FIndexedAngle> Sorted;
-		Sorted.Reserve(Obs.Num());
-		for (int32 i = 0; i < Obs.Num(); ++i)
-		{
-			FVector2D P(Obs[i].Position.X, Obs[i].Position.Y);
-			Sorted.Add({i, FMath::Atan2(P.Y - C.Y, P.X - C.X)});
-		}
-		Sorted.Sort([](const FIndexedAngle& A, const FIndexedAngle& B) { return A.Angle < B.Angle; });
+		// Sort cache by pre-computed angle
+		Cache.Sort([](const FObsCache& A, const FObsCache& B) { return A.Angle < B.Angle; });
 
-		// Candidate result
 		struct FCandidate { float Angle; float R; };
-		TArray<FCandidate> Candidates;
+		TArray<FCandidate, TInlineAllocator<16>> Candidates;
 
-		for (int32 k = 0; k < Sorted.Num(); ++k)
+		for (int32 k = 0; k < Cache.Num(); ++k)
 		{
-			int32 i = Sorted[k].Index;
-			int32 j = Sorted[(k + 1) % Sorted.Num()].Index;
+			const FObsCache& Oi = Cache[k];
+			const FObsCache& Oj = Cache[(k + 1) % Cache.Num()];
 
-			FVector2D Pi(Obs[i].Position.X, Obs[i].Position.Y);
-			FVector2D Pj(Obs[j].Position.X, Obs[j].Position.Y);
-			float ri = AgentR + Obs[i].Radius;
-			float rj = AgentR + Obs[j].Radius;
-
-			// Two-circle intersection: find points tangent to both obstacle circles
-			FVector2D D = Pj - Pi;
+			FVector2f D = Oj.Pos - Oi.Pos;
 			float d = D.Size();
 			if (d < KINDA_SMALL_NUMBER) continue;
+			float ri = Oi.SumR;
+			float rj = Oj.SumR;
 			if (d > ri + rj + KINDA_SMALL_NUMBER) continue;   // Too far apart
 			if (d < FMath::Abs(ri - rj) - KINDA_SMALL_NUMBER) continue; // One inside the other
 
@@ -347,26 +355,25 @@ namespace ArcClipSolver
 			if (hSq < 0.f) continue;
 			float h = FMath::Sqrt(FMath::Max(0.f, hSq));
 
-			FVector2D Mid = Pi + (a / d) * D;
-			FVector2D Perp(-D.Y / d, D.X / d);
+			FVector2f Mid = Oi.Pos + (a / d) * D;
+			FVector2f Perp(-D.Y / d, D.X / d);
 
-			FVector2D Cand1 = Mid + h * Perp;
-			FVector2D Cand2 = Mid - h * Perp;
+			FVector2f Cand1 = Mid + h * Perp;
+			FVector2f Cand2 = Mid - h * Perp;
 
 			// Pick the one farther from C (the outer valley between obstacles)
 			float Dist1 = (Cand1 - C).SizeSquared();
 			float Dist2 = (Cand2 - C).SizeSquared();
-			FVector2D BestCand = (Dist1 >= Dist2) ? Cand1 : Cand2;
-
-			float CandR = (BestCand - C).Size();
+			FVector2f BestCand = (Dist1 >= Dist2) ? Cand1 : Cand2;
+			float CandR = FMath::Sqrt(FMath::Max(Dist1, Dist2));
 			if (CandR > MaxR) continue;
 
-			// Validate: no collision with any obstacle
+			// Validate: no collision with any obstacle (use squared distance to avoid sqrt)
 			bool bValid = true;
-			for (const auto& O : Obs)
+			for (const FObsCache& O : Cache)
 			{
-				FVector2D OP(O.Position.X, O.Position.Y);
-				if ((BestCand - OP).Size() < AgentR + O.Radius - KINDA_SMALL_NUMBER)
+				float MinDist = FMath::Max(0.f, O.SumR - KINDA_SMALL_NUMBER);
+				if ((BestCand - O.Pos).SizeSquared() < MinDist * MinDist)
 				{
 					bValid = false;
 					break;
@@ -408,27 +415,31 @@ bool FSparseGridQueryUtils::SolveArcClippingPosition(
 	FVector& OutPosition)
 {
 	if (TargetRadius < 0.f || AgentRadius <= 0.f) return false;
-	const FVector2D C(TargetPosition.X, TargetPosition.Y);
-	const FVector2D P = FVector2D(PreferredDirection.X, PreferredDirection.Y).GetSafeNormal();
+	const FVector2f C(TargetPosition.X, TargetPosition.Y);
+	const FVector2f P = FVector2f(PreferredDirection.X, PreferredDirection.Y).GetSafeNormal();
 	const float PrefAngle = FMath::Atan2(P.Y, P.X);
 	const float ContactR = TargetRadius + AgentRadius;
 	constexpr float MaxR = 5000.f;
 
+	// Pre-compute obstacle cache: 2D position, polar coordinates, sum radius
+	// Eliminates repeated FVector→FVector2f conversion and Atan2 calls across Part A/B/C
+	auto Cache = ArcClipSolver::BuildCache(C, AgentRadius, Obstacles);
+
 	float BestAngle = PrefAngle;
 	float FinalR = ContactR;
 
-	bool bA = ArcClipSolver::SolvePartA(C, ContactR, AgentRadius, Obstacles, PrefAngle, BestAngle);
+	bool bA = ArcClipSolver::SolvePartA(ContactR, Cache, PrefAngle, BestAngle);
 	if (bA)
 	{
 		// Phase 1: free arc found on contact circle, use Part A + Part B
-		if (!ArcClipSolver::SolvePartB(C, ContactR, AgentRadius, Obstacles, BestAngle, MaxR, FinalR))
+		if (!ArcClipSolver::SolvePartB(ContactR, Cache, BestAngle, MaxR, FinalR))
 			return false;
 	}
 	else
 	{
 		// Phase 2: contact circle fully blocked — try Part C (dual-tangent honeycomb packing)
 		float PartCAngle, PartCR;
-		if (ArcClipSolver::SolvePartC(C, AgentRadius, Obstacles, PrefAngle, MaxR, PartCAngle, PartCR))
+		if (ArcClipSolver::SolvePartC(C, AgentRadius, Cache, PrefAngle, MaxR, PartCAngle, PartCR))
 		{
 			BestAngle = PartCAngle;
 			FinalR = PartCR;
@@ -437,7 +448,7 @@ bool FSparseGridQueryUtils::SolveArcClippingPosition(
 		{
 			// Fallback: preferred angle + Part B push-out
 			BestAngle = PrefAngle;
-			if (!ArcClipSolver::SolvePartB(C, ContactR, AgentRadius, Obstacles, BestAngle, MaxR, FinalR))
+			if (!ArcClipSolver::SolvePartB(ContactR, Cache, BestAngle, MaxR, FinalR))
 				return false;
 		}
 	}

@@ -55,17 +55,40 @@ static void RegisterDefaultActions(UGOAPManager* Manager)
     ReturnAction.AddEffect(EGOAPGameStateKey::AtHomeLocation, 1);
     DefaultActionSet->AddAction(ReturnAction);
 
+    FGOAPActionData MoveToSurroundAction;
+    MoveToSurroundAction.ActionID = EGOAPGameAction::MoveToSurroundPosition;
+    MoveToSurroundAction.ActionName = TEXT("MoveToSurroundPosition");
+    MoveToSurroundAction.BaseCost = 2.5f;
+    MoveToSurroundAction.AddPrecondition(EGOAPGameStateKey::HasTarget, 1);
+    MoveToSurroundAction.AddPrecondition(EGOAPGameStateKey::HasSurroundAssignment, 1);
+    MoveToSurroundAction.AddEffect(EGOAPGameStateKey::AtSurroundPosition, 1);
+    DefaultActionSet->AddAction(MoveToSurroundAction);
+
+    FGOAPActionData WaitAction;
+    WaitAction.ActionID = EGOAPGameAction::WaitForAttackOpportunity;
+    WaitAction.ActionName = TEXT("WaitForAttackOpportunity");
+    WaitAction.BaseCost = 2.0f;
+    WaitAction.AddPrecondition(EGOAPGameStateKey::HasTarget, 1);
+    WaitAction.AddPrecondition(EGOAPGameStateKey::HasSurroundAssignment, 1);
+    WaitAction.AddPrecondition(EGOAPGameStateKey::AtSurroundPosition, 1);
+    WaitAction.AddEffect(EGOAPGameStateKey::TargetInAttackRange, 1);
+    DefaultActionSet->AddAction(WaitAction);
+
     Manager->RegisterActionSet(1, DefaultActionSet);
 
     static TSharedPtr<FPatrolActionExecutor> PatrolExecutor = MakeShared<FPatrolActionExecutor>();
     static TSharedPtr<FChaseActionExecutor> ChaseExecutor = MakeShared<FChaseActionExecutor>();
     static TSharedPtr<FAttackActionExecutor> AttackExecutor = MakeShared<FAttackActionExecutor>();
     static TSharedPtr<FReturnActionExecutor> ReturnExecutor = MakeShared<FReturnActionExecutor>();
+    static TSharedPtr<FMoveToSurroundPositionExecutor> MoveToSurroundExecutor = MakeShared<FMoveToSurroundPositionExecutor>();
+    static TSharedPtr<FWaitForAttackOpportunityExecutor> WaitExecutor = MakeShared<FWaitForAttackOpportunityExecutor>();
 
     Manager->GetActionRegistry()->RegisterExecutor(1, EGOAPGameAction::Patrol, PatrolExecutor);
     Manager->GetActionRegistry()->RegisterExecutor(1, EGOAPGameAction::Chase, ChaseExecutor);
     Manager->GetActionRegistry()->RegisterExecutor(1, EGOAPGameAction::Attack, AttackExecutor);
     Manager->GetActionRegistry()->RegisterExecutor(1, EGOAPGameAction::ReturnToPatrol, ReturnExecutor);
+    Manager->GetActionRegistry()->RegisterExecutor(1, EGOAPGameAction::MoveToSurroundPosition, MoveToSurroundExecutor);
+    Manager->GetActionRegistry()->RegisterExecutor(1, EGOAPGameAction::WaitForAttackOpportunity, WaitExecutor);
 }
 
 class FGOAPModule : public IModuleInterface

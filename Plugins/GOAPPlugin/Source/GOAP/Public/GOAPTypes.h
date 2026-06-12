@@ -170,6 +170,7 @@ struct GOAP_API FGOAPAgentContext
     bool bActionFailed = false;
     bool bActionAborted = false;
     bool bIsAttacking = false;
+    bool bRequestSurroundAssignment = false;
 
     void Reset()
     {
@@ -182,6 +183,7 @@ struct GOAP_API FGOAPAgentContext
         bActionFailed = false;
         bActionAborted = false;
         bIsAttacking = false;
+        bRequestSurroundAssignment = false;
     }
 };
 

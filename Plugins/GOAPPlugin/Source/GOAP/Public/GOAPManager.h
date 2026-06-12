@@ -36,6 +36,12 @@ public:
     void SetCrowdSurroundService(ICrowdSurroundService* InService) { CrowdSurroundService = InService; }
     ICrowdSurroundService* GetCrowdSurroundService() const { return CrowdSurroundService; }
 
+    // ─── Surround Request 去重 ───
+    bool HasSurroundRequest(int32 ObjectID) const;
+    bool CanRequestSurroundAssignment(int32 ObjectID, UObject* TargetObject) const;
+    void MarkSurroundRequestSubmitted(int32 ObjectID, UObject* TargetObject);
+    void CleanupSurroundRequests();
+
     void SetAgentGoal(int32 ObjectID, const FGOAPWorldState& Goal);
     void RequestReplan(int32 ObjectID);
 
@@ -76,9 +82,17 @@ public:
     ICrowdSurroundService* CrowdSurroundService = nullptr;
 
 private:
-	bool bActionSetRegistered;
+    struct FSurroundRequestState
+    {
+        TWeakObjectPtr<UObject> TargetObject;
+        bool bSubmitted = false;
+    };
+
+    bool bActionSetRegistered;
     TArray<FGOAPAgentData> Agents;
     TMap<int32, int32> ObjectIDToIndex;
+
+    TMap<int32, FSurroundRequestState> SurroundRequestStates;
 
     UPROPERTY()
     TMap<int32, UGOAPActionSet*> ActionSets;

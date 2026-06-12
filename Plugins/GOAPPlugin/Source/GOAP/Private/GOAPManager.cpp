@@ -27,6 +27,7 @@ void UGOAPManager::Deinitialize()
     ObjectIDToIndex.Empty();
     ActionSets.Empty();
     PlanCache.Empty();
+    SurroundRequestStates.Empty();
     if (ActionRegistry)
     {
         ActionRegistry->ClearAll();
@@ -163,6 +164,7 @@ void UGOAPManager::TickManager(float DeltaTime)
 	BatchPlan();
 	ExecuteActions(DeltaTime);
 	ApplyContexts(DeltaTime);
+	CleanupSurroundRequests();
 }
 
 void UGOAPManager::UpdateWorldStates()
@@ -496,4 +498,51 @@ const FGOAPAgentData* UGOAPManager::FindAgentData(int32 ObjectID) const
         return &Agents[*Index];
     }
     return nullptr;
+}
+
+bool UGOAPManager::HasSurroundRequest(int32 ObjectID) const
+{
+    return SurroundRequestStates.Contains(ObjectID);
+}
+
+bool UGOAPManager::CanRequestSurroundAssignment(int32 ObjectID, UObject* TargetObject) const
+{
+    const FSurroundRequestState* State = SurroundRequestStates.Find(ObjectID);
+    if (!State)
+    {
+        return true;
+    }
+
+    // 目标切换时允许提交新的 request
+    if (!State->TargetObject.IsValid() || State->TargetObject.Get() != TargetObject)
+    {
+        return true;
+    }
+
+    return !State->bSubmitted;
+}
+
+void UGOAPManager::MarkSurroundRequestSubmitted(int32 ObjectID, UObject* TargetObject)
+{
+    FSurroundRequestState& State = SurroundRequestStates.FindOrAdd(ObjectID);
+    State.TargetObject = TargetObject;
+    State.bSubmitted = true;
+}
+
+void UGOAPManager::CleanupSurroundRequests()
+{
+    // 清理无效的 request state（Agent 已注销或目标已销毁）
+    for (auto It = SurroundRequestStates.CreateIterator(); It; ++It)
+    {
+        if (!ObjectIDToIndex.Contains(It.Key()))
+        {
+            It.RemoveCurrent();
+            continue;
+        }
+
+        if (!It.Value().TargetObject.IsValid())
+        {
+            It.RemoveCurrent();
+        }
+    }
 }

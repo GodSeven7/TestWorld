@@ -1,6 +1,9 @@
 #include "GOAPGameActionExecutors.h"
 #include "GOAPAgentInterface.h"
 #include "GOAPAgentConfig.h"
+#include "GOAPManager.h"
+#include "CrowdSurroundService.h"
+#include "GameFramework/Actor.h"
 #include "ProfilingDebugging/CpuProfilerTrace.h"
 
 bool FChaseActionExecutor::CheckPreconditions(IGOAPAgentInterface* Agent, const FGOAPWorldState& CurrentWorldState) const
@@ -16,7 +19,8 @@ bool FChaseActionExecutor::ShouldAbort(IGOAPAgentInterface* Agent, const FGOAPWo
 
 bool FChaseActionExecutor::CheckCompletion(IGOAPAgentInterface* Agent, const FGOAPWorldState& CurrentWorldState) const
 {
-    return CurrentWorldState.GetState(EGOAPGameStateKey::TargetInAttackRange) == 1;
+    return CurrentWorldState.GetState(EGOAPGameStateKey::TargetInAttackRange) == 1 ||
+           CurrentWorldState.GetState(EGOAPGameStateKey::HasSurroundAssignment) == 1;
 }
 
 void FChaseActionExecutor::ExecuteInternal(IGOAPAgentInterface* Agent, FGOAPAgentContext& Context, float DeltaTime, const FGOAPWorldState& CurrentWorldState)
@@ -37,6 +41,67 @@ void FChaseActionExecutor::ExecuteInternal(IGOAPAgentInterface* Agent, FGOAPAgen
     Context.DesiredPosition = TargetPosition;
     Context.MoveSpeed = Agent->QueryMoveSpeed();
     Context.bHasDesiredPosition = true;
+}
+
+void FChaseActionExecutor::OnEnter(IGOAPAgentInterface* Agent)
+{
+    AActor* OwnerActor = Agent->QueryOwnerActor();
+    if (!OwnerActor)
+    {
+        return;
+    }
+
+    UWorld* World = OwnerActor->GetWorld();
+    if (!World)
+    {
+        return;
+    }
+
+    UGOAPManager* Manager = World->GetSubsystem<UGOAPManager>();
+    if (!Manager)
+    {
+        return;
+    }
+
+    ICrowdSurroundService* SurroundService = Manager->GetCrowdSurroundService();
+    if (!SurroundService)
+    {
+        return;
+    }
+
+    // 检查是否已有 assignment，避免重复 request
+    FCrowdSurroundAssignment ExistingAssignment;
+    if (SurroundService->GetSurroundAssignment(Agent->GetObjectID(), ExistingAssignment) && ExistingAssignment.bHasAssignment)
+    {
+        return;
+    }
+
+    // 检查 request 去重
+    if (!Manager->CanRequestSurroundAssignment(Agent->GetObjectID(), Agent->QueryTargetObject()))
+    {
+        return;
+    }
+
+    UObject* TargetObj = Agent->QueryTargetObject();
+    if (!TargetObj)
+    {
+        return;
+    }
+
+    FCrowdSurroundRequest Request;
+    Request.ObjectID = Agent->GetObjectID();
+    Request.AgentObject = OwnerActor;
+    Request.TargetObject = TargetObj;
+    Request.Params.AttackRange = Agent->QueryAttackRange();
+    Request.Params.CollisionRadius = 40.0f;
+
+    FCrowdSurroundAssignment OutAssignment;
+    {
+        FScopeLock Lock(RequestLock.Get());
+        SurroundService->RequestSurroundAssignment(Request, OutAssignment);
+    }
+
+    Manager->MarkSurroundRequestSubmitted(Agent->GetObjectID(), TargetObj);
 }
 
 void FChaseActionExecutor::Apply(IGOAPAgentInterface* Agent, const FGOAPAgentContext& Context, float DeltaTime, const FGOAPWorldState& CurrentWorldState)
