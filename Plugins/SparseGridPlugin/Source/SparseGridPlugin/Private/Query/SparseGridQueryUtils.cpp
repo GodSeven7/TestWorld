@@ -299,6 +299,107 @@ namespace ArcClipSolver
 		OutR = Rmin;
 		return true;
 	}
+
+	/**
+	 * Part C: Dual-tangent solver for honeycomb packing.
+	 * When the contact circle is fully blocked, find the position where the agent
+	 * is tangent to two adjacent obstacles simultaneously, fitting into the "valley"
+	 * between them. This naturally produces honeycomb packing for subsequent layers.
+	 */
+	static bool SolvePartC(const FVector2D& C, float AgentR, const TArray<FSparseGridArcObstacle>& Obs, float PrefAngle, float MaxR, float& OutAngle, float& OutR)
+	{
+		if (Obs.Num() < 2) return false;
+
+		// Sort obstacles by angle around C
+		struct FIndexedAngle { int32 Index; float Angle; };
+		TArray<FIndexedAngle> Sorted;
+		Sorted.Reserve(Obs.Num());
+		for (int32 i = 0; i < Obs.Num(); ++i)
+		{
+			FVector2D P(Obs[i].Position.X, Obs[i].Position.Y);
+			Sorted.Add({i, FMath::Atan2(P.Y - C.Y, P.X - C.X)});
+		}
+		Sorted.Sort([](const FIndexedAngle& A, const FIndexedAngle& B) { return A.Angle < B.Angle; });
+
+		// Candidate result
+		struct FCandidate { float Angle; float R; };
+		TArray<FCandidate> Candidates;
+
+		for (int32 k = 0; k < Sorted.Num(); ++k)
+		{
+			int32 i = Sorted[k].Index;
+			int32 j = Sorted[(k + 1) % Sorted.Num()].Index;
+
+			FVector2D Pi(Obs[i].Position.X, Obs[i].Position.Y);
+			FVector2D Pj(Obs[j].Position.X, Obs[j].Position.Y);
+			float ri = AgentR + Obs[i].Radius;
+			float rj = AgentR + Obs[j].Radius;
+
+			// Two-circle intersection: find points tangent to both obstacle circles
+			FVector2D D = Pj - Pi;
+			float d = D.Size();
+			if (d < KINDA_SMALL_NUMBER) continue;
+			if (d > ri + rj + KINDA_SMALL_NUMBER) continue;   // Too far apart
+			if (d < FMath::Abs(ri - rj) - KINDA_SMALL_NUMBER) continue; // One inside the other
+
+			float a = (ri * ri - rj * rj + d * d) / (2.0f * d);
+			float hSq = ri * ri - a * a;
+			if (hSq < 0.f) continue;
+			float h = FMath::Sqrt(FMath::Max(0.f, hSq));
+
+			FVector2D Mid = Pi + (a / d) * D;
+			FVector2D Perp(-D.Y / d, D.X / d);
+
+			FVector2D Cand1 = Mid + h * Perp;
+			FVector2D Cand2 = Mid - h * Perp;
+
+			// Pick the one farther from C (the outer valley between obstacles)
+			float Dist1 = (Cand1 - C).SizeSquared();
+			float Dist2 = (Cand2 - C).SizeSquared();
+			FVector2D BestCand = (Dist1 >= Dist2) ? Cand1 : Cand2;
+
+			float CandR = (BestCand - C).Size();
+			if (CandR > MaxR) continue;
+
+			// Validate: no collision with any obstacle
+			bool bValid = true;
+			for (const auto& O : Obs)
+			{
+				FVector2D OP(O.Position.X, O.Position.Y);
+				if ((BestCand - OP).Size() < AgentR + O.Radius - KINDA_SMALL_NUMBER)
+				{
+					bValid = false;
+					break;
+				}
+			}
+			if (!bValid) continue;
+
+			Candidates.Add({FMath::Atan2(BestCand.Y - C.Y, BestCand.X - C.X), CandR});
+		}
+
+		if (Candidates.Num() == 0) return false;
+
+		// Select best: minimize R primarily, then angular distance to preferred direction as tiebreaker
+		// Score = R + AngDist * Scale, where Scale is small enough that R dominates
+		// but large enough to break ties in favor of preferred direction
+		constexpr float AngularScale = 1.0f;
+		FCandidate Best = Candidates[0];
+		float BestScore = MAX_FLT;
+		for (const FCandidate& Cand : Candidates)
+		{
+			float AngDist = AngularDistance(Cand.Angle, PrefAngle);
+			float Score = Cand.R + AngDist * AngularScale;
+			if (Score < BestScore)
+			{
+				BestScore = Score;
+				Best = Cand;
+			}
+		}
+
+		OutAngle = Best.Angle;
+		OutR = Best.R;
+		return true;
+	}
 }
 
 bool FSparseGridQueryUtils::SolveArcClippingPosition(
@@ -314,12 +415,32 @@ bool FSparseGridQueryUtils::SolveArcClippingPosition(
 	constexpr float MaxR = 5000.f;
 
 	float BestAngle = PrefAngle;
-	bool bA = ArcClipSolver::SolvePartA(C, ContactR, AgentRadius, Obstacles, PrefAngle, BestAngle);
-	if (!bA) BestAngle = PrefAngle;
-
 	float FinalR = ContactR;
-	if (!ArcClipSolver::SolvePartB(C, ContactR, AgentRadius, Obstacles, BestAngle, MaxR, FinalR))
-		return false;
+
+	bool bA = ArcClipSolver::SolvePartA(C, ContactR, AgentRadius, Obstacles, PrefAngle, BestAngle);
+	if (bA)
+	{
+		// Phase 1: free arc found on contact circle, use Part A + Part B
+		if (!ArcClipSolver::SolvePartB(C, ContactR, AgentRadius, Obstacles, BestAngle, MaxR, FinalR))
+			return false;
+	}
+	else
+	{
+		// Phase 2: contact circle fully blocked — try Part C (dual-tangent honeycomb packing)
+		float PartCAngle, PartCR;
+		if (ArcClipSolver::SolvePartC(C, AgentRadius, Obstacles, PrefAngle, MaxR, PartCAngle, PartCR))
+		{
+			BestAngle = PartCAngle;
+			FinalR = PartCR;
+		}
+		else
+		{
+			// Fallback: preferred angle + Part B push-out
+			BestAngle = PrefAngle;
+			if (!ArcClipSolver::SolvePartB(C, ContactR, AgentRadius, Obstacles, BestAngle, MaxR, FinalR))
+				return false;
+		}
+	}
 
 	OutPosition = FVector(
 		TargetPosition.X + FMath::Cos(BestAngle) * FinalR,
