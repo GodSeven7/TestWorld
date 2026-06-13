@@ -1,6 +1,5 @@
 #pragma once
 
-#include "CrowdSurroundRuntimeTypes.h"
 #include "DrawDebugHelpers.h"
 
 namespace CrowdSurroundUtilities
@@ -8,21 +7,6 @@ namespace CrowdSurroundUtilities
     inline FVector FlattenPosition(const FVector& Position)
     {
         return FVector(Position.X, Position.Y, 0.0f);
-    }
-
-    inline FColor GetAssignmentColor(ECrowdSurroundAssignmentState State, ECrowdSurroundAssignmentType Type)
-    {
-        if (Type == ECrowdSurroundAssignmentType::AttackAnchor)
-        {
-            return State == ECrowdSurroundAssignmentState::Attacking ? FColor(255, 128, 0) : FColor::Yellow;
-        }
-
-        if (Type == ECrowdSurroundAssignmentType::WaitPoint)
-        {
-            return State == ECrowdSurroundAssignmentState::Waiting ? FColor(80, 160, 255) : FColor::Cyan;
-        }
-
-        return FColor::Silver;
     }
 
     inline void DrawCircle(UWorld* World, const FVector& Center, float Radius, const FColor& Color, float LifeTime, float Thickness)

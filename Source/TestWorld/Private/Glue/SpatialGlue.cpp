@@ -232,19 +232,15 @@ void USpatialGlue::TickNavigationUpdate()
 	}
 }
 
-// Step 2: Bridge CrowdSurround assignments to UnifiedData CorrectedDesiredPosition.
-// After TickCrowdSurround has updated assignments, iterate all objects that have
-// CrowdSurround assignments and write the assignment's DesiredPosition to UnifiedData's
-// CorrectedDesiredPosition. For objects without assignments, clear it.
+// Step 2: Bridge CrowdSurround locked slots and assignments to UnifiedData CorrectedDesiredPosition.
+// Locked agents receive their locked position. Non-locked agents with an active assignment
+// receive the assignment's DesiredPosition. Others have their correction cleared.
 void USpatialGlue::TickCrowdSurroundCorrection()
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(USpatialGlue_TickCrowdSurroundCorrection);
 
 	if (!GridManager || !CrowdSurroundManager)
 		return;
-
-	// Recompute all dirty group assignments based on current LockedSlots state
-	CrowdSurroundManager->RecomputeAllDirtyGroups();
 
 	TArray<ISparseGridObject*> AllObjects = GridManager->GetAllObjects();
 	for (ISparseGridObject* Obj : AllObjects)
@@ -256,18 +252,26 @@ void USpatialGlue::TickCrowdSurroundCorrection()
 		UActorUnifiedDataComponent* UnifiedData = Comp->GetUnifiedDataComponent();
 
 		int32 ObjectID = Obj->GetObjectID();
+		if (ObjectID == INDEX_NONE)
+			continue;
+
+		// Locked agents: use their locked position directly
+		FVector LockedPos;
+		if (CrowdSurroundManager->GetFixedSlotPosition(ObjectID, LockedPos))
+		{
+			UnifiedData->SetCorrectedDesiredPosition(LockedPos);
+			continue;
+		}
+
+		// Non-locked agents with an assignment that requires movement
 		FCrowdSurroundAssignment Assignment;
-		if (ObjectID != INDEX_NONE
-			&& CrowdSurroundManager->GetSurroundAssignment(ObjectID, Assignment)
+		if (CrowdSurroundManager->GetSurroundAssignment(ObjectID, Assignment)
 			&& Assignment.bShouldMove)
 		{
-			// Object has an active CrowdSurround assignment that requires movement:
-			// write the assignment's DesiredPosition as the corrected destination
 			UnifiedData->SetCorrectedDesiredPosition(Assignment.DesiredPosition);
 		}
 		else
 		{
-			// No active assignment or assignment doesn't require movement: clear corrected position
 			UnifiedData->ClearCorrectedDesiredPosition();
 		}
 	}

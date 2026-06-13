@@ -43,7 +43,7 @@ public:
     virtual void OnActionCompleted(int32 ActionID) override {}
     virtual void OnPlanCompleted(bool bSuccess) override {}
     virtual void OnTargetFound(UActorUnifiedDataComponent* TargetData) override {}
-    virtual void OnTargetLost() override {}
+    virtual void OnTargetLost() override;
 
     virtual const UGOAPAgentConfig* GetAgentConfig() const override { return AgentConfig; }
 

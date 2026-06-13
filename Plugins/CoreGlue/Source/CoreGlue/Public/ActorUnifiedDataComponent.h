@@ -38,6 +38,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "UnifiedData")
 	void InitializeUnifiedData();
 
+	void BeforeInitializeUnifiedData();
+
 	// --- 位置 / 旋转 / 朝向 ---
 	FVector GetPosition() const { return CurrentData.Position; }
 	void SetPosition(const FVector& InPosition);

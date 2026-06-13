@@ -74,7 +74,7 @@ void FAttackActionExecutor::OnEnter(IGOAPAgentInterface* Agent)
     ICrowdSurroundService* SurroundService = Manager->GetCrowdSurroundService();
     if (SurroundService)
     {
-        SurroundService->LockSurroundAssignment(Agent->GetObjectID());
+        SurroundService->LockAttackSlot(Agent->GetObjectID());
     }
 }
 
@@ -101,7 +101,7 @@ void FAttackActionExecutor::OnExit(IGOAPAgentInterface* Agent, EGOAPActionExitRe
     ICrowdSurroundService* SurroundService = Manager->GetCrowdSurroundService();
     if (SurroundService)
     {
-        SurroundService->UnlockSurroundAssignment(Agent->GetObjectID());
+        SurroundService->UnlockAttackSlot(Agent->GetObjectID());
     }
 }
 

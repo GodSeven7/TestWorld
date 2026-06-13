@@ -36,11 +36,31 @@ void UGOAPAgentComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
     {
         if (UGOAPManager* Manager = GetWorld()->GetSubsystem<UGOAPManager>())
         {
+            ICrowdSurroundService* SurroundService = Manager->GetCrowdSurroundService();
+            if (SurroundService)
+            {
+                SurroundService->ClearSurroundState(GetObjectID());
+            }
             Manager->UnregisterAgent(this);
         }
     }
 
     Super::EndPlay(EndPlayReason);
+}
+
+void UGOAPAgentComponent::OnTargetLost()
+{
+    if (GetObjectID() >= 0)
+    {
+        if (UGOAPManager* Manager = GetWorld()->GetSubsystem<UGOAPManager>())
+        {
+            ICrowdSurroundService* SurroundService = Manager->GetCrowdSurroundService();
+            if (SurroundService)
+            {
+                SurroundService->ClearSurroundState(GetObjectID());
+            }
+        }
+    }
 }
 
 void UGOAPAgentComponent::SetGoal(const FGOAPWorldState& NewGoal)
@@ -148,7 +168,7 @@ void UGOAPAgentComponent::UpdateWorldState(FGOAPWorldState& OutWorldState)
 
     if (SurroundService)
     {
-        bool bHasRequest = GOAPManager->HasSurroundRequest(GetObjectID());
+        bool bHasRequest = SurroundService->IsInSurroundGroup(GetObjectID());
         OutWorldState.SetState(EGOAPGameStateKey::HasSurroundRequest, bHasRequest ? 1 : 0);
 
         FCrowdSurroundAssignment Assignment;

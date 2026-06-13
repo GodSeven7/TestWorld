@@ -35,6 +35,7 @@ static void RegisterDefaultActions(UGOAPManager* Manager)
     ChaseAction.ActionName = TEXT("Chase");
     ChaseAction.BaseCost = 2.0f;
     ChaseAction.AddPrecondition(EGOAPGameStateKey::HasTarget, 1);
+    ChaseAction.AddPrecondition(EGOAPGameStateKey::HasSurroundAssignment, 0);
     ChaseAction.AddEffect(EGOAPGameStateKey::TargetInAttackRange, 1);
     DefaultActionSet->AddAction(ChaseAction);
 

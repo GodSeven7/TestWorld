@@ -4,6 +4,7 @@
 #include "GOAPGameTypes.h"
 #include "GOAPAgentConfig.h"
 #include "GOAPManager.h"
+#include "CrowdSurroundService.h"
 #include "GameFramework/Actor.h"
 #include "Actors/GameCharacter.h"
 #include "CombatComponent.h"
@@ -184,25 +185,42 @@ FGOAPWorldState UGOAPAgentWithUnifiedDataComponent::GetGoalState() const
 
 void UGOAPAgentWithUnifiedDataComponent::OnTargetFound(UActorUnifiedDataComponent* TargetData)
 {
-	if (UnifiedDataComponent && TargetData)
-	{
-		FVector TargetPos = TargetData->GetPosition();
-		float Distance = FVector::Dist2D(QueryWorldPosition(), TargetPos);
-		int32 TargetID = static_cast<int32>(TargetData->GetUniqueID());
-		UnifiedDataComponent->SetTarget(TargetID, TargetPos, Distance);
-	}
+    AActor* NewTarget = TargetData ? TargetData->GetOwner() : nullptr;
 
-	CachedTargetActor = TargetData ? TargetData->GetOwner() : nullptr;
+    // 目标切换：清理旧目标的 CrowdSurround 状态
+    if (CachedTargetActor.IsValid() && CachedTargetActor.Get() != NewTarget)
+    {
+        if (UGOAPManager* Manager = GetWorld()->GetSubsystem<UGOAPManager>())
+        {
+            ICrowdSurroundService* SurroundService = Manager->GetCrowdSurroundService();
+            if (SurroundService)
+            {
+                SurroundService->ClearSurroundState(GetObjectID());
+            }
+        }
+    }
+
+    if (UnifiedDataComponent && TargetData)
+    {
+        FVector TargetPos = TargetData->GetPosition();
+        float Distance = FVector::Dist2D(QueryWorldPosition(), TargetPos);
+        int32 TargetID = static_cast<int32>(TargetData->GetUniqueID());
+        UnifiedDataComponent->SetTarget(TargetID, TargetPos, Distance);
+    }
+
+    CachedTargetActor = NewTarget;
 }
 
 void UGOAPAgentWithUnifiedDataComponent::OnTargetLost()
 {
-	if (UnifiedDataComponent)
-	{
-		UnifiedDataComponent->ClearTarget();
-	}
+    if (UnifiedDataComponent)
+    {
+        UnifiedDataComponent->ClearTarget();
+    }
 
-	CachedTargetActor = nullptr;
+    CachedTargetActor = nullptr;
+
+    Super::OnTargetLost();
 }
 
 void UGOAPAgentWithUnifiedDataComponent::SetCombatGoalWithTarget(AActor* Target)

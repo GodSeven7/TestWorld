@@ -993,9 +993,7 @@ void USparseGridManager::ComputeFlowFieldDirections()
         // QueryDesiredPosition(). No direct override needed here.
 
         const bool bContactApproach = bHasCurrentSurroundAssignment
-            && CurrentSurroundAssignment.bShouldMove
-            && CurrentSurroundAssignment.BandMax > KINDA_SMALL_NUMBER
-            && CurrentSurroundAssignment.DesiredRadius <= CurrentSurroundAssignment.BandMax + KINDA_SMALL_NUMBER;
+            && CurrentSurroundAssignment.bShouldMove;
 
         // MoveSpeed=0: AI fully stopped, not affected by Separation
         if (MoveSpeed <= KINDA_SMALL_NUMBER)
@@ -1198,17 +1196,10 @@ void USparseGridManager::ApplySteeringCorrections()
 
     auto GetSurroundIngressPriority = [](const FCrowdSurroundAssignment& Assignment) -> int32
     {
-        if (Assignment.Type == ECrowdSurroundAssignmentType::AttackAnchor)
-        {
-            return Assignment.State == ECrowdSurroundAssignmentState::Attacking ? 0 : 1;
-        }
-
-        if (Assignment.Type == ECrowdSurroundAssignmentType::WaitPoint)
-        {
-            return 10 + FMath::Max(0, Assignment.WaitLayer);
-        }
-
-        return TNumericLimits<int32>::Max();
+        // Locked agents have highest priority (0), agents in position next (1), moving agents last (2)
+        if (Assignment.bLocksCrowdPosition)  return 0;
+        if (Assignment.bIsInPosition)        return 1;
+        return 2;
     };
 
     for (int32 i = 0; i < Objects.Num(); ++i)

@@ -6,9 +6,6 @@
 UActorUnifiedDataComponent::UActorUnifiedDataComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
-
-	static int32 NextObjectID = 1;
-	CurrentData.ObjectID = NextObjectID++;
 }
 
 void UActorUnifiedDataComponent::BeginPlay()
@@ -31,6 +28,12 @@ void UActorUnifiedDataComponent::InitializeUnifiedData()
 				}
 			});
 	}
+}
+
+void UActorUnifiedDataComponent::BeforeInitializeUnifiedData()
+{
+	static int32 NextObjectID = 1;
+	CurrentData.ObjectID = NextObjectID++;
 }
 
 void UActorUnifiedDataComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)

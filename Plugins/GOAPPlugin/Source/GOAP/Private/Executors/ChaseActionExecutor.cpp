@@ -76,12 +76,6 @@ void FChaseActionExecutor::OnEnter(IGOAPAgentInterface* Agent)
         return;
     }
 
-    // 检查 request 去重
-    if (!Manager->CanRequestSurroundAssignment(Agent->GetObjectID(), Agent->QueryTargetObject()))
-    {
-        return;
-    }
-
     UObject* TargetObj = Agent->QueryTargetObject();
     if (!TargetObj)
     {
@@ -95,13 +89,7 @@ void FChaseActionExecutor::OnEnter(IGOAPAgentInterface* Agent)
     Request.Params.AttackRange = Agent->QueryAttackRange();
     Request.Params.CollisionRadius = 40.0f;
 
-    FCrowdSurroundAssignment OutAssignment;
-    {
-        FScopeLock Lock(RequestLock.Get());
-        SurroundService->RequestSurroundAssignment(Request, OutAssignment);
-    }
-
-    Manager->MarkSurroundRequestSubmitted(Agent->GetObjectID(), TargetObj);
+    SurroundService->RequestSurroundAssignment(Request);
 }
 
 void FChaseActionExecutor::Apply(IGOAPAgentInterface* Agent, const FGOAPAgentContext& Context, float DeltaTime, const FGOAPWorldState& CurrentWorldState)

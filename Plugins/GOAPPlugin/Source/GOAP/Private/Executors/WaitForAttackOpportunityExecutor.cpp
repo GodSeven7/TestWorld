@@ -7,9 +7,11 @@
 
 bool FWaitForAttackOpportunityExecutor::CheckPreconditions(IGOAPAgentInterface* Agent, const FGOAPWorldState& CurrentWorldState) const
 {
+    // Planner 保留 AtSurroundPosition=1 以保证链路完整，
+    // 但 runtime 放宽：CrowdSurround 更新等待点时不应触发 replan，
+    // 而是在 ExecuteInternal 内继续跟随新的 DesiredPosition
     return CurrentWorldState.GetState(EGOAPGameStateKey::HasTarget) == 1
-        && CurrentWorldState.GetState(EGOAPGameStateKey::HasSurroundAssignment) == 1
-        && CurrentWorldState.GetState(EGOAPGameStateKey::AtSurroundPosition) == 1;
+        && CurrentWorldState.GetState(EGOAPGameStateKey::HasSurroundAssignment) == 1;
 }
 
 bool FWaitForAttackOpportunityExecutor::ShouldAbort(IGOAPAgentInterface* Agent, const FGOAPWorldState& CurrentWorldState) const
@@ -98,4 +100,58 @@ void FWaitForAttackOpportunityExecutor::ExecuteInternal(IGOAPAgentInterface* Age
 
 void FWaitForAttackOpportunityExecutor::Apply(IGOAPAgentInterface* Agent, const FGOAPAgentContext& Context, float DeltaTime, const FGOAPWorldState& CurrentWorldState)
 {
+}
+
+void FWaitForAttackOpportunityExecutor::OnEnter(IGOAPAgentInterface* Agent)
+{
+    AActor* OwnerActor = Agent->QueryOwnerActor();
+    if (!OwnerActor)
+    {
+        return;
+    }
+
+    UWorld* World = OwnerActor->GetWorld();
+    if (!World)
+    {
+        return;
+    }
+
+    UGOAPManager* Manager = World->GetSubsystem<UGOAPManager>();
+    if (!Manager)
+    {
+        return;
+    }
+
+    ICrowdSurroundService* SurroundService = Manager->GetCrowdSurroundService();
+    if (SurroundService)
+    {
+        SurroundService->LockWaitSlot(Agent->GetObjectID());
+    }
+}
+
+void FWaitForAttackOpportunityExecutor::OnExit(IGOAPAgentInterface* Agent, EGOAPActionExitReason Reason)
+{
+    AActor* OwnerActor = Agent->QueryOwnerActor();
+    if (!OwnerActor)
+    {
+        return;
+    }
+
+    UWorld* World = OwnerActor->GetWorld();
+    if (!World)
+    {
+        return;
+    }
+
+    UGOAPManager* Manager = World->GetSubsystem<UGOAPManager>();
+    if (!Manager)
+    {
+        return;
+    }
+
+    ICrowdSurroundService* SurroundService = Manager->GetCrowdSurroundService();
+    if (SurroundService)
+    {
+        SurroundService->UnlockWaitSlot(Agent->GetObjectID());
+    }
 }

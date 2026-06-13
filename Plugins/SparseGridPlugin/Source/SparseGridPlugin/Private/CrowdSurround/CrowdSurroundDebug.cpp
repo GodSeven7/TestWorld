@@ -3,65 +3,6 @@
 #include "SparseGridComponent.h"
 #include "DrawDebugHelpers.h"
 
-namespace
-{
-    FColor GetAnchorColor(ECrowdAttackAnchorState State)
-    {
-        switch (State)
-        {
-        case ECrowdAttackAnchorState::Reserved:
-            return FColor::Yellow;
-        case ECrowdAttackAnchorState::Occupied:
-            return FColor(255, 128, 0);
-        case ECrowdAttackAnchorState::Blocked:
-            return FColor::Red;
-        case ECrowdAttackAnchorState::Cooldown:
-            return FColor::Purple;
-        case ECrowdAttackAnchorState::Free:
-        default:
-            return FColor::Green;
-        }
-    }
-
-    const TCHAR* GetAnchorStateText(ECrowdAttackAnchorState State)
-    {
-        switch (State)
-        {
-        case ECrowdAttackAnchorState::Reserved:
-            return TEXT("RES");
-        case ECrowdAttackAnchorState::Occupied:
-            return TEXT("OCC");
-        case ECrowdAttackAnchorState::Blocked:
-            return TEXT("BLK");
-        case ECrowdAttackAnchorState::Cooldown:
-            return TEXT("CD");
-        case ECrowdAttackAnchorState::Free:
-        default:
-            return TEXT("FREE");
-        }
-    }
-
-    const TCHAR* GetAssignmentStateText(ECrowdSurroundAssignmentState State)
-    {
-        switch (State)
-        {
-        case ECrowdSurroundAssignmentState::MovingToAttack:
-            return TEXT("MTA");
-        case ECrowdSurroundAssignmentState::Attacking:
-            return TEXT("ATK");
-        case ECrowdSurroundAssignmentState::MovingToWait:
-            return TEXT("MTW");
-        case ECrowdSurroundAssignmentState::Waiting:
-            return TEXT("WAIT");
-        case ECrowdSurroundAssignmentState::Reassigning:
-            return TEXT("REA");
-        case ECrowdSurroundAssignmentState::None:
-        default:
-            return TEXT("NONE");
-        }
-    }
-}
-
 void UCrowdSurroundManager::DrawDebugCrowd() const
 {
     UWorld* World = GetWorld();
@@ -80,10 +21,11 @@ void UCrowdSurroundManager::DrawDebugCrowd() const
             continue;
         }
 
-        CrowdSurroundUtilities::DrawCircle(World, Group.AnchorPosition, Group.AttackBandMin, FColor::Green, LifeTime, 1.5f);
-        CrowdSurroundUtilities::DrawCircle(World, Group.AnchorPosition, Group.AttackBandMax, FColor(255, 128, 0), LifeTime, 1.5f);
+        // Draw target radius circle
+        CrowdSurroundUtilities::DrawCircle(World, Group.AnchorPosition, Group.TargetRadius, FColor::Green, LifeTime, 1.5f);
 
-        // Count attack/wait assignments for agents targeting this group
+        // Count assignments and slots for this group
+        int32 AssignmentCount = 0;
         int32 AttackCount = 0;
         int32 WaitCount = 0;
         for (const auto& IntentPair : AgentIntents)
@@ -94,16 +36,15 @@ void UCrowdSurroundManager::DrawDebugCrowd() const
             }
 
             const FCrowdSurroundAssignment* Assignment = Assignments.Find(IntentPair.Key);
-            if (!Assignment || !Assignment->bHasAssignment)
+            if (Assignment && Assignment->bHasAssignment)
             {
-                continue;
+                ++AssignmentCount;
             }
-
-            if (Assignment->Type == ECrowdSurroundAssignmentType::AttackAnchor)
+            if (AttackSlotList.Contains(IntentPair.Key))
             {
                 ++AttackCount;
             }
-            else if (Assignment->Type == ECrowdSurroundAssignmentType::WaitPoint)
+            if (WaitSlotList.Contains(IntentPair.Key))
             {
                 ++WaitCount;
             }
@@ -112,76 +53,65 @@ void UCrowdSurroundManager::DrawDebugCrowd() const
         DrawDebugString(
             World,
             Group.AnchorPosition + FVector(0.0f, 0.0f, 95.0f),
-            FString::Printf(TEXT("Crowd Anchors:%d/%d Wait:%d R:%.0f-%.0f"),
+            FString::Printf(TEXT("Assignments:%d AttackSlots:%d WaitSlots:%d"),
+                AssignmentCount,
                 AttackCount,
-                Group.AttackCapacity,
-                WaitCount,
-                Group.AttackBandMin,
-                Group.AttackBandMax),
+                WaitCount),
             nullptr,
             FColor::White,
             LifeTime,
             false,
             0.9f);
 
-        for (const FCrowdAttackAnchor& Anchor : Group.AttackAnchors)
+        // Draw attack slots (orange/red)
+        for (const auto& SlotPair : AttackSlotList)
         {
-            FVector AnchorPosition = Anchor.Position;
-            AnchorPosition.Z += 24.0f;
+            if (SlotPair.Value.TargetObjectID != GroupPair.Key)
+            {
+                continue;
+            }
 
-            const FColor AnchorColor = GetAnchorColor(Anchor.State);
-            DrawDebugSphere(World, AnchorPosition, 12.0f, 8, AnchorColor, false, LifeTime, SDPG_World, 2.0f);
-            DrawDebugLine(World, Group.AnchorPosition + FVector(0.0f, 0.0f, 12.0f), AnchorPosition, AnchorColor, false, LifeTime, SDPG_World, 0.75f);
+            const FLockedSurroundSlot& Slot = SlotPair.Value;
+            FVector LockedPos = Slot.LockedPosition;
+            LockedPos.Z += 24.0f;
+            DrawDebugSphere(World, LockedPos, 12.0f, 8, FColor(255, 128, 0), false, LifeTime, SDPG_World, 2.0f);
+            DrawDebugLine(World, Group.AnchorPosition + FVector(0.0f, 0.0f, 12.0f), LockedPos, FColor(255, 128, 0), false, LifeTime, SDPG_World, 0.75f);
             DrawDebugString(
                 World,
-                AnchorPosition + FVector(0.0f, 0.0f, 16.0f),
-                FString::Printf(TEXT("H%d %s O%d"), Anchor.AnchorID, GetAnchorStateText(Anchor.State), Anchor.OwnerObjectID),
+                LockedPos + FVector(0.0f, 0.0f, 16.0f),
+                FString::Printf(TEXT("ATTACK ID%d"), Slot.ObjectID),
                 nullptr,
-                AnchorColor,
+                FColor(255, 128, 0),
                 LifeTime,
                 false,
                 0.8f);
-
-            if (const FCrowdWaitCluster* Cluster = Group.WaitClusters.Find(Anchor.AnchorID))
-            {
-                for (const FCrowdWaitPoint& WaitPoint : Cluster->WaitPoints)
-                {
-                    FVector WaitPosition = WaitPoint.Position;
-                    WaitPosition.Z += 18.0f;
-
-                    FVector ParentPosition = AnchorPosition;
-                    if (WaitPoint.ParentObjectID != INDEX_NONE)
-                    {
-                        // Look up the parent agent's position from AgentIntents + Assignments
-                        const FCrowdSurroundAgentIntent* ParentIntent = AgentIntents.Find(WaitPoint.ParentObjectID);
-                        if (ParentIntent && ParentIntent->TargetObjectID == GroupPair.Key)
-                        {
-                            ParentPosition = GetAgentPosition(WaitPoint.ParentObjectID, Group);
-                            ParentPosition.Z += 18.0f;
-                        }
-                    }
-
-                    DrawDebugSphere(World, WaitPosition, 8.0f, 8, FColor::Cyan, false, LifeTime, SDPG_World, 1.5f);
-                    DrawDebugLine(World, ParentPosition, WaitPosition, FColor::Cyan, false, LifeTime, SDPG_World, 0.6f);
-                    DrawDebugString(
-                        World,
-                        WaitPosition + FVector(0.0f, 0.0f, 12.0f),
-                        FString::Printf(TEXT("W%d L%d B%d A%d P%d"),
-                            WaitPoint.WaitIndex,
-                            WaitPoint.WaitLayer,
-                            WaitPoint.WaitBranchIndex,
-                            WaitPoint.OwnerObjectID,
-                            WaitPoint.ParentObjectID),
-                        nullptr,
-                        FColor::Cyan,
-                        LifeTime,
-                        false,
-                        0.75f);
-                }
-            }
         }
 
-        // Draw agent assignments for agents targeting this group
+        // Draw wait slots (cyan/blue)
+        for (const auto& SlotPair : WaitSlotList)
+        {
+            if (SlotPair.Value.TargetObjectID != GroupPair.Key)
+            {
+                continue;
+            }
+
+            const FLockedSurroundSlot& Slot = SlotPair.Value;
+            FVector LockedPos = Slot.LockedPosition;
+            LockedPos.Z += 20.0f;
+            DrawDebugSphere(World, LockedPos, 10.0f, 8, FColor(0, 180, 220), false, LifeTime, SDPG_World, 1.5f);
+            DrawDebugLine(World, Group.AnchorPosition + FVector(0.0f, 0.0f, 10.0f), LockedPos, FColor(0, 180, 220), false, LifeTime, SDPG_World, 0.6f);
+            DrawDebugString(
+                World,
+                LockedPos + FVector(0.0f, 0.0f, 14.0f),
+                FString::Printf(TEXT("WAIT ID%d"), Slot.ObjectID),
+                nullptr,
+                FColor(0, 180, 220),
+                LifeTime,
+                false,
+                0.8f);
+        }
+
+        // Draw agent assignments (yellow = moving, blue = stopped)
         for (const auto& IntentPair : AgentIntents)
         {
             if (IntentPair.Value.TargetObjectID != GroupPair.Key)
@@ -200,27 +130,13 @@ void UCrowdSurroundManager::DrawDebugCrowd() const
             AgentPosition.Z += 18.0f;
 
             FVector DesiredPosition = Assignment->DesiredPosition;
-            DesiredPosition.Z += Assignment->Type == ECrowdSurroundAssignmentType::AttackAnchor ? 34.0f : 24.0f;
+            DesiredPosition.Z += 34.0f;
 
-            const FColor AssignmentColor = CrowdSurroundUtilities::GetAssignmentColor(Assignment->State, Assignment->Type);
-            const float MarkerRadius = Assignment->Type == ECrowdSurroundAssignmentType::AttackAnchor ? 13.0f : 9.0f;
-            DrawDebugSphere(World, DesiredPosition, MarkerRadius, 8, AssignmentColor, false, LifeTime, SDPG_World, 2.0f);
+            FColor AssignmentColor = Assignment->bShouldMove ? FColor::Yellow : FColor(80, 160, 255);
+            DrawDebugSphere(World, DesiredPosition, 13.0f, 8, AssignmentColor, false, LifeTime, SDPG_World, 2.0f);
             DrawDebugLine(World, AgentPosition, DesiredPosition, AssignmentColor, false, LifeTime, SDPG_World, 0.8f);
 
-            FString Label = FString::Printf(
-                TEXT("%s ID%d H%d W%d L%d B%d %s"),
-                Assignment->Type == ECrowdSurroundAssignmentType::AttackAnchor ? TEXT("A") : TEXT("Q"),
-                ObjectID,
-                Assignment->AnchorID,
-                Assignment->WaitIndex,
-                Assignment->WaitLayer,
-                Assignment->WaitBranchIndex,
-                GetAssignmentStateText(Assignment->State));
-
-            if (Assignment->bHasAttackPermission)
-            {
-                Label += TEXT(" OK");
-            }
+            FString Label = FString::Printf(TEXT("A ID%d"), ObjectID);
             if (Assignment->bIsInPosition)
             {
                 Label += TEXT(" I");
@@ -232,10 +148,6 @@ void UCrowdSurroundManager::DrawDebugCrowd() const
             if (Assignment->bLocksCrowdPosition)
             {
                 Label += TEXT(" L");
-            }
-            if (Assignment->bIsRefillCandidate)
-            {
-                Label += TEXT(" R");
             }
 
             DrawDebugString(World, DesiredPosition + FVector(0.0f, 0.0f, 18.0f), Label, nullptr, AssignmentColor, LifeTime, false, 0.9f);

@@ -13,13 +13,17 @@ AGameBaseActor::AGameBaseActor()
 
 void AGameBaseActor::BeginPlay()
 {
+	if (UnifiedDataComponent)
+	{
+		UnifiedDataComponent->BeforeInitializeUnifiedData();
+	}	
+
     Super::BeginPlay();
 
-    // 所有组件 BeginPlay 已完成，按顺序初始化
-    if (UnifiedDataComponent)
-    {
-        UnifiedDataComponent->InitializeUnifiedData();
-    }
+	if (UnifiedDataComponent)
+	{
+		UnifiedDataComponent->InitializeUnifiedData();
+	}
 
     if (SparseGridComponent)
     {

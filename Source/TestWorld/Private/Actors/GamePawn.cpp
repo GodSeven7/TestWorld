@@ -24,16 +24,18 @@ AGamePawn::AGamePawn()
 
 void AGamePawn::BeginPlay()
 {
+	if (UnifiedDataComponent)
+	{
+		UnifiedDataComponent->BeforeInitializeUnifiedData();
+	}
+
     Super::BeginPlay();
 
-    // 所有组件 BeginPlay 已完成，按顺序初始化
-    // 1. 先初始化统一数据（同步Actor数据 + 注册到Registry）
-    if (UnifiedDataComponent)
-    {
-        UnifiedDataComponent->InitializeUnifiedData();
-    }
+	if (UnifiedDataComponent)
+	{
+		UnifiedDataComponent->InitializeUnifiedData();
+	}
 
-    // 2. 再注册到SparseGrid（此时 Faction 等数据已就绪）
     if (SparseGridComponent)
     {
         SparseGridComponent->RegisterToGrid();
